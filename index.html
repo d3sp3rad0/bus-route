@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f766e" />
+    <meta
+      name="description"
+      content="Бесплатный помощник водителя: продиктуйте точки и откройте готовый маршрут в Яндекс Картах."
+    />
+    <title>Маршрут автобуса</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="route-panel" aria-labelledby="app-title">
+        <div class="topbar">
+          <div>
+            <p class="eyebrow">Туристический автобус</p>
+            <h1 id="app-title">Маршрут</h1>
+          </div>
+          <div class="status-pill" id="speech-status">Готов</div>
+        </div>
+
+        <label class="input-label" for="route-input">Точки маршрута</label>
+        <div class="input-wrap">
+          <textarea
+            id="route-input"
+            rows="6"
+            autocomplete="off"
+            autocapitalize="sentences"
+            spellcheck="true"
+            placeholder="Курск. Россошь. Волгоград. Мамаев курган. Обратно в Курск."
+          ></textarea>
+          <button class="mic-button" type="button" id="mic-button" aria-label="Диктовать маршрут">
+            <span aria-hidden="true">●</span>
+          </button>
+        </div>
+
+        <div class="quick-row" aria-label="Быстрые действия">
+          <button type="button" class="secondary-button" id="parse-button">Разобрать</button>
+          <button type="button" class="secondary-button" id="sample-button">Пример</button>
+          <button type="button" class="secondary-button danger" id="clear-button">Очистить</button>
+        </div>
+
+        <div class="points-head">
+          <h2>Точки</h2>
+          <span id="points-count">0</span>
+        </div>
+
+        <ol class="points-list" id="points-list"></ol>
+
+        <form class="add-point" id="add-point-form">
+          <input id="new-point" type="text" placeholder="Добавить точку" autocomplete="off" />
+          <button type="submit" aria-label="Добавить точку">+</button>
+        </form>
+
+        <div class="actions">
+          <a class="primary-button disabled" id="open-route" href="#" target="_blank" rel="noopener">
+            Открыть в Яндекс Картах
+          </a>
+          <button type="button" class="secondary-button" id="copy-link">Скопировать ссылку</button>
+        </div>
+
+        <div class="history" id="history-section" hidden>
+          <div class="points-head">
+            <h2>Последние</h2>
+            <button type="button" class="text-button" id="clear-history">Стереть</button>
+          </div>
+          <div class="history-list" id="history-list"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
+

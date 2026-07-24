@@ -1,0 +1,11 @@
+{
+  "name": "Маршрут автобуса",
+  "short_name": "Маршрут",
+  "description": "Бесплатный помощник для открытия маршрута в Яндекс Картах.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#eef6f3",
+  "theme_color": "#0f766e",
+  "icons": []
+}
+
