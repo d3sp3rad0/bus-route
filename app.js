@@ -17,6 +17,9 @@ const routeNote = document.querySelector("#route-note");
 
 const SAMPLE_ROUTE = "Курск. Россошь. Волгоград. Мамаев курган. Обратно в Курск.";
 const HISTORY_KEY = "bus-route-history-v1";
+const GEOCODE_CACHE_KEY = "bus-route-geocode-cache-v1";
+const GEOCODER_URL = "https://nominatim.openstreetmap.org/search";
+const GEOCODE_DELAY_MS = 1100;
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 const KURSK_NAMES = ["курск"];
 const BELARUS_NAMES = [
@@ -43,6 +46,8 @@ let points = [];
 let recognition = null;
 let isRecording = false;
 let routeWasAdjusted = false;
+let isPreparingRoute = false;
+let lastGeocodeAt = 0;
 
 function normalizePoint(value) {
   return value
@@ -120,6 +125,16 @@ function pointMatches(point, names) {
   return names.some((name) => normalized.includes(name.replace(/ё/g, "е")));
 }
 
+function lookupKey(point) {
+  return point
+    .toLocaleLowerCase("ru-RU")
+    .replace(/ё/g, "е")
+    .replace(/[.,;:!?()]/g, " ")
+    .replace(/\b(город|г)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function isKursk(point) {
   return pointMatches(point, KURSK_NAMES);
 }
@@ -174,9 +189,110 @@ function addSafetyWaypoints(routePoints) {
   return { points: adjusted, adjusted: changed };
 }
 
-function buildYandexUrl(routePoints) {
-  const rtext = routePoints.map((point) => encodeURIComponent(point)).join("~");
+function loadGeocodeCache() {
+  try {
+    return JSON.parse(localStorage.getItem(GEOCODE_CACHE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveGeocodeCache(cache) {
+  localStorage.setItem(GEOCODE_CACHE_KEY, JSON.stringify(cache));
+}
+
+function wait(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function respectGeocoderLimit() {
+  const elapsed = Date.now() - lastGeocodeAt;
+  if (elapsed > 0 && elapsed < GEOCODE_DELAY_MS) {
+    await wait(GEOCODE_DELAY_MS - elapsed);
+  }
+  lastGeocodeAt = Date.now();
+}
+
+async function geocodePoint(point) {
+  const key = lookupKey(point);
+  const cache = loadGeocodeCache();
+  if (cache[key]) {
+    return cache[key];
+  }
+
+  await respectGeocoderLimit();
+
+  const params = new URLSearchParams({
+    format: "jsonv2",
+    q: point,
+    limit: "1",
+    "accept-language": "ru",
+  });
+
+  const response = await fetch(`${GEOCODER_URL}?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error("Сервис поиска координат сейчас не ответил. Попробуйте еще раз.");
+  }
+
+  const results = await response.json();
+  const first = Array.isArray(results) ? results[0] : null;
+  if (!first || !first.lat || !first.lon) {
+    throw new Error(`Не удалось найти точку: ${point}`);
+  }
+
+  const coordinates = {
+    lat: Number(first.lat),
+    lon: Number(first.lon),
+  };
+  cache[key] = coordinates;
+  saveGeocodeCache(cache);
+  return coordinates;
+}
+
+async function buildYandexUrl(routePoints) {
+  const coordinates = [];
+  for (const point of routePoints) {
+    coordinates.push(await geocodePoint(point));
+  }
+
+  const rtext = coordinates
+    .map(({ lat, lon }) => `${lat.toFixed(6)},${lon.toFixed(6)}`)
+    .join("~");
   return `https://yandex.ru/maps/?mode=routes&rtext=${rtext}&rtt=auto`;
+}
+
+function setRoutePreparing(preparing) {
+  isPreparingRoute = preparing;
+  render();
+  speechStatus.textContent = preparing ? "Ищу точки" : "Готов";
+}
+
+async function prepareRouteUrl(routePoints) {
+  if (routePoints.length < 2 || isPreparingRoute) {
+    return null;
+  }
+
+  setRoutePreparing(true);
+  try {
+    const url = await buildYandexUrl(routePoints);
+    saveHistory(routePoints, url);
+    return url;
+  } finally {
+    setRoutePreparing(false);
+  }
+}
+
+async function openPreparedRoute(routePoints) {
+  try {
+    const url = await prepareRouteUrl(routePoints);
+    if (url) {
+      window.location.href = url;
+    }
+  } catch (error) {
+    window.alert(error.message || "Не удалось подготовить маршрут.");
+  }
 }
 
 function updateInputFromPoints() {
@@ -228,7 +344,7 @@ function renderHistory() {
       points = [...item.points];
       updateInputFromPoints();
       render();
-      window.location.href = item.url;
+      openPreparedRoute(points);
     });
     historyList.append(button);
   });
@@ -273,14 +389,17 @@ function render() {
     pointsList.append(item);
   });
 
-  const ready = points.length >= 2;
+  const ready = points.length >= 2 && !isPreparingRoute;
   openRoute.classList.toggle("disabled", !ready);
   copyLink.disabled = !ready;
+  openRoute.textContent = isPreparingRoute ? "Готовлю маршрут..." : "Открыть в Яндекс Картах";
 
   if (ready) {
-    const url = buildYandexUrl(points);
-    openRoute.href = url;
-    openRoute.onclick = () => saveHistory(points, url);
+    openRoute.href = "#";
+    openRoute.onclick = (event) => {
+      event.preventDefault();
+      openPreparedRoute(points);
+    };
   } else {
     openRoute.href = "#";
     openRoute.onclick = null;
@@ -335,22 +454,30 @@ function previewCurrentText() {
   applyRouteText(input.value, false);
 }
 
-function copyCurrentLink() {
-  if (points.length < 2) {
+async function copyCurrentLink() {
+  if (points.length < 2 || isPreparingRoute) {
     return;
   }
-  const url = buildYandexUrl(points);
-  navigator.clipboard
-    .writeText(url)
-    .then(() => {
-      copyLink.textContent = "Ссылка скопирована";
-      window.setTimeout(() => {
-        copyLink.textContent = "Скопировать ссылку";
-      }, 1600);
-    })
-    .catch(() => {
+
+  let url = "";
+  try {
+    url = await prepareRouteUrl(points);
+    if (!url) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(url);
+    copyLink.textContent = "Ссылка скопирована";
+    window.setTimeout(() => {
+      copyLink.textContent = "Скопировать ссылку";
+    }, 1600);
+  } catch (error) {
+    if (url) {
       window.prompt("Скопируйте ссылку", url);
-    });
+      return;
+    }
+    window.alert(error.message || "Не удалось подготовить ссылку.");
+  }
 }
 
 function setupSpeech() {
