@@ -37,7 +37,7 @@ const BELARUS_NAMES = [
   "пинск",
   "орша",
 ];
-const NORTH_BELARUS_CORRIDOR = ["Орёл", "Брянск", "Могилёв"];
+const NORTH_BELARUS_CORRIDOR = ["Орёл", "Брянск"];
 
 let points = [];
 let recognition = null;
@@ -137,17 +137,11 @@ function appendIfUseful(target, point) {
 
 function corridorBetween(from, to) {
   if (isKursk(from) && isBelarusPoint(to)) {
-    const corridor = isBelarusPoint(to) && !pointMatches(to, ["могилёв", "могилев"])
-      ? NORTH_BELARUS_CORRIDOR
-      : NORTH_BELARUS_CORRIDOR.slice(0, 2);
-    return corridor;
+    return NORTH_BELARUS_CORRIDOR;
   }
 
   if (isBelarusPoint(from) && isKursk(to)) {
-    const corridor = isBelarusPoint(from) && !pointMatches(from, ["могилёв", "могилев"])
-      ? [...NORTH_BELARUS_CORRIDOR].reverse()
-      : NORTH_BELARUS_CORRIDOR.slice(0, 2).reverse();
-    return corridor;
+    return [...NORTH_BELARUS_CORRIDOR].reverse();
   }
 
   return [];
