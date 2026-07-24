@@ -21,6 +21,7 @@ const LEGACY_GEOCODE_CACHE_KEYS = ["bus-route-geocode-cache-v1", "bus-route-geoc
 const GEOCODER_URL = "https://nominatim.openstreetmap.org/search";
 const GEOCODE_DELAY_MS = 1100;
 const CITY_RESULT_TYPES = new Set(["city", "town", "village", "hamlet", "municipality"]);
+const REGION_RESULT_TYPES = new Set(["state", "county", "region", "province", "district"]);
 const MULTI_WORD_PLACE_STARTS = new Set([
   "белая",
   "великие",
@@ -278,17 +279,23 @@ function pickBestGeocodeResult(results) {
 
 function scoreGeocodeResult(result) {
   let score = 0;
-  if (result.category === "place") {
-    score += 40;
+  if (CITY_RESULT_TYPES.has(result.addresstype)) {
+    score += 80;
   }
   if (CITY_RESULT_TYPES.has(result.type)) {
-    score += 40;
+    score += 50;
   }
-  if (CITY_RESULT_TYPES.has(result.addresstype)) {
-    score += 30;
+  if (result.category === "place") {
+    score += 25;
   }
-  if (result.category === "boundary") {
-    score -= 30;
+  if (result.category === "boundary" && CITY_RESULT_TYPES.has(result.addresstype)) {
+    score += 10;
+  }
+  if (result.category === "boundary" && !CITY_RESULT_TYPES.has(result.addresstype)) {
+    score -= 50;
+  }
+  if (REGION_RESULT_TYPES.has(result.addresstype) || REGION_RESULT_TYPES.has(result.type)) {
+    score -= 60;
   }
   return score;
 }
