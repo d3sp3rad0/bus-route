@@ -256,6 +256,18 @@ input:focus {
   list-style: none;
 }
 
+.route-note {
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 8px;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  color: #5c4708;
+  background: #fff8e6;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .point-item {
   display: grid;
   grid-template-columns: 34px 1fr auto;
@@ -394,4 +406,3 @@ input:focus {
     justify-content: flex-end;
   }
 }
-
