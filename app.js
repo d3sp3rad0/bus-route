@@ -367,7 +367,7 @@ function openAppRoute({ appUrl, webUrl }) {
     if (!document.hidden) {
       window.location.href = webUrl;
     }
-  }, 2200);
+  }, 3500);
 
   window.location.href = appUrl;
 }
