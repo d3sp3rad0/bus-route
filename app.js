@@ -31,18 +31,60 @@ function normalizePoint(value) {
     .trim();
 }
 
+function splitByCapitalizedPlaces(text) {
+  const words = text.split(/\s+/).filter(Boolean);
+  const result = [];
+  let current = "";
+
+  words.forEach((word) => {
+    const cleanWord = word.replace(/^[,.;:!?]+|[,.;:!?]+$/g, "");
+    if (!cleanWord) {
+      return;
+    }
+
+    const startsNewPoint = /^[А-ЯЁA-Z]/.test(cleanWord) && current;
+    if (startsNewPoint) {
+      result.push(current);
+      current = cleanWord;
+      return;
+    }
+
+    current = current ? `${current} ${cleanWord}` : cleanWord;
+  });
+
+  if (current) {
+    result.push(current);
+  }
+
+  return result;
+}
+
+function splitSingleChunk(chunk) {
+  const normalized = normalizePoint(chunk);
+  if (!normalized) {
+    return [];
+  }
+
+  const capitalized = splitByCapitalizedPlaces(normalized);
+  if (capitalized.length > 1) {
+    return capitalized;
+  }
+
+  return [normalized];
+}
+
 function parseRouteText(text) {
   const prepared = text
-    .replace(/\b(обратно|назад|вернуться|возвращаемся|возвращение)\s+(в|во|на|к|ко)\s+/gi, ", ")
-    .replace(/\b(потом|затем|дальше|после этого|далее|через)\b/gi, ",")
+    .replace(/(^|\s)(обратно|назад|вернуться|возвращаемся|возвращение)\s+(в|во|на|к|ко)\s+/gi, ", ")
+    .replace(/(^|\s)(потом|затем|дальше|после этого|далее|через)(?=\s|$)/gi, ",")
     .replace(/\s+(и потом|и затем)\s+/gi, ",")
     .replace(/[;:\n]+/g, ",")
     .replace(/[.]+/g, ",");
 
   const parsed = prepared
     .split(",")
+    .flatMap(splitSingleChunk)
     .map(normalizePoint)
-    .filter(Boolean)
     .filter((point) => point.length > 1);
 
   return parsed.filter((point, index) => {
@@ -317,4 +359,3 @@ clearHistory.addEventListener("click", () => {
 setupSpeech();
 render();
 renderHistory();
-
