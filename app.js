@@ -13,14 +13,36 @@ const speechStatus = document.querySelector("#speech-status");
 const historySection = document.querySelector("#history-section");
 const historyList = document.querySelector("#history-list");
 const clearHistory = document.querySelector("#clear-history");
+const routeNote = document.querySelector("#route-note");
 
 const SAMPLE_ROUTE = "Курск. Россошь. Волгоград. Мамаев курган. Обратно в Курск.";
 const HISTORY_KEY = "bus-route-history-v1";
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const KURSK_NAMES = ["курск"];
+const BELARUS_NAMES = [
+  "беларусь",
+  "белоруссия",
+  "минск",
+  "могилёв",
+  "могилев",
+  "гомель",
+  "витебск",
+  "брест",
+  "гродно",
+  "бобруйск",
+  "полоцк",
+  "новополоцк",
+  "лида",
+  "барановичи",
+  "пинск",
+  "орша",
+];
+const NORTH_BELARUS_CORRIDOR = ["Орёл", "Брянск", "Могилёв"];
 
 let points = [];
 let recognition = null;
 let isRecording = false;
+let routeWasAdjusted = false;
 
 function normalizePoint(value) {
   return value
@@ -93,6 +115,71 @@ function parseRouteText(text) {
   });
 }
 
+function pointMatches(point, names) {
+  const normalized = point.toLocaleLowerCase("ru-RU").replace(/ё/g, "е");
+  return names.some((name) => normalized.includes(name.replace(/ё/g, "е")));
+}
+
+function isKursk(point) {
+  return pointMatches(point, KURSK_NAMES);
+}
+
+function isBelarusPoint(point) {
+  return pointMatches(point, BELARUS_NAMES);
+}
+
+function appendIfUseful(target, point) {
+  const previous = target[target.length - 1];
+  if (!previous || previous.toLocaleLowerCase("ru-RU") !== point.toLocaleLowerCase("ru-RU")) {
+    target.push(point);
+  }
+}
+
+function corridorBetween(from, to) {
+  if (isKursk(from) && isBelarusPoint(to)) {
+    const corridor = isBelarusPoint(to) && !pointMatches(to, ["могилёв", "могилев"])
+      ? NORTH_BELARUS_CORRIDOR
+      : NORTH_BELARUS_CORRIDOR.slice(0, 2);
+    return corridor;
+  }
+
+  if (isBelarusPoint(from) && isKursk(to)) {
+    const corridor = isBelarusPoint(from) && !pointMatches(from, ["могилёв", "могилев"])
+      ? [...NORTH_BELARUS_CORRIDOR].reverse()
+      : NORTH_BELARUS_CORRIDOR.slice(0, 2).reverse();
+    return corridor;
+  }
+
+  return [];
+}
+
+function addSafetyWaypoints(routePoints) {
+  if (routePoints.length < 2) {
+    return { points: routePoints, adjusted: false };
+  }
+
+  const adjusted = [];
+  let changed = false;
+
+  routePoints.forEach((point, index) => {
+    appendIfUseful(adjusted, point);
+    const next = routePoints[index + 1];
+    if (!next) {
+      return;
+    }
+
+    const corridor = corridorBetween(point, next);
+    corridor.forEach((waypoint) => {
+      if (!pointMatches(point, [waypoint]) && !pointMatches(next, [waypoint])) {
+        appendIfUseful(adjusted, waypoint);
+        changed = true;
+      }
+    });
+  });
+
+  return { points: adjusted, adjusted: changed };
+}
+
 function buildYandexUrl(routePoints) {
   const rtext = routePoints.map((point) => encodeURIComponent(point)).join("~");
   return `https://yandex.ru/maps/?mode=routes&rtext=${rtext}&rtt=auto`;
@@ -156,6 +243,10 @@ function renderHistory() {
 function render() {
   pointsList.innerHTML = "";
   pointsCount.textContent = String(points.length);
+  routeNote.hidden = !routeWasAdjusted;
+  routeNote.textContent = routeWasAdjusted
+    ? "Для маршрута Курск ↔ Беларусь добавлен северный коридор через Орёл и Брянск, чтобы Яндекс не вел вдоль границы с Украиной."
+    : "";
 
   points.forEach((point, index) => {
     const item = document.createElement("li");
@@ -232,7 +323,10 @@ function removePoint(index) {
 }
 
 function parseCurrentText() {
-  points = parseRouteText(input.value);
+  const parsedPoints = parseRouteText(input.value);
+  const result = addSafetyWaypoints(parsedPoints);
+  points = result.points;
+  routeWasAdjusted = result.adjusted;
   updateInputFromPoints();
   render();
 }
@@ -332,6 +426,7 @@ sampleButton.addEventListener("click", () => {
 clearButton.addEventListener("click", () => {
   input.value = "";
   points = [];
+  routeWasAdjusted = false;
   render();
 });
 copyLink.addEventListener("click", copyCurrentLink);
