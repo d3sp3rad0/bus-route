@@ -65,6 +65,7 @@ let isRecording = false;
 let routeWasAdjusted = false;
 let isPreparingRoute = false;
 let lastGeocodeAt = 0;
+let appFallbackTimer = null;
 const geocodeSessionCache = new Map();
 
 function normalizePoint(value) {
@@ -292,16 +293,30 @@ function scoreGeocodeResult(result) {
   return score;
 }
 
-async function buildYandexUrl(routePoints) {
+async function buildRouteLinks(routePoints) {
   const coordinates = [];
   for (const point of routePoints) {
     coordinates.push(await geocodePoint(point));
   }
 
+  return {
+    appUrl: buildYandexAppUrl(coordinates),
+    webUrl: buildYandexWebUrl(coordinates),
+  };
+}
+
+function buildYandexWebUrl(coordinates) {
   const rtext = coordinates
     .map(({ lat, lon }) => `${lat.toFixed(6)},${lon.toFixed(6)}`)
     .join("~");
   return `https://yandex.ru/maps/?mode=routes&rtext=${rtext}&rtt=auto`;
+}
+
+function buildYandexAppUrl(coordinates) {
+  const rtext = coordinates
+    .map(({ lat, lon }) => `${lat.toFixed(6)},${lon.toFixed(6)}`)
+    .join("~");
+  return `yandexmaps://maps.yandex.ru/?mode=routes&rtext=${rtext}&rtt=auto`;
 }
 
 function setRoutePreparing(preparing) {
@@ -317,9 +332,9 @@ async function prepareRouteUrl(routePoints) {
 
   setRoutePreparing(true);
   try {
-    const url = await buildYandexUrl(routePoints);
+    const links = await buildRouteLinks(routePoints);
     saveHistory(routePoints);
-    return url;
+    return links;
   } finally {
     setRoutePreparing(false);
   }
@@ -327,14 +342,36 @@ async function prepareRouteUrl(routePoints) {
 
 async function openPreparedRoute(routePoints) {
   try {
-    const url = await prepareRouteUrl(routePoints);
-    if (url) {
-      window.location.href = url;
+    const links = await prepareRouteUrl(routePoints);
+    if (links) {
+      openAppRoute(links);
     }
   } catch (error) {
     window.alert(error.message || "Не удалось подготовить маршрут.");
   }
 }
+
+function openAppRoute({ appUrl, webUrl }) {
+  window.clearTimeout(appFallbackTimer);
+
+  const cancelFallback = () => {
+    if (document.hidden) {
+      window.clearTimeout(appFallbackTimer);
+      document.removeEventListener("visibilitychange", cancelFallback);
+    }
+  };
+
+  document.addEventListener("visibilitychange", cancelFallback);
+  appFallbackTimer = window.setTimeout(() => {
+    document.removeEventListener("visibilitychange", cancelFallback);
+    if (!document.hidden) {
+      window.location.href = webUrl;
+    }
+  }, 2200);
+
+  window.location.href = appUrl;
+}
+
 
 function updateInputFromPoints() {
   input.value = points.join(". ");
@@ -507,21 +544,22 @@ async function copyCurrentLink() {
     return;
   }
 
-  let url = "";
+  let webUrl = "";
   try {
-    url = await prepareRouteUrl(points);
-    if (!url) {
+    const links = await prepareRouteUrl(points);
+    if (!links) {
       return;
     }
+    webUrl = links.webUrl;
 
-    await navigator.clipboard.writeText(url);
+    await navigator.clipboard.writeText(webUrl);
     copyLink.textContent = "Ссылка скопирована";
     window.setTimeout(() => {
       copyLink.textContent = "Скопировать ссылку";
     }, 1600);
   } catch (error) {
-    if (url) {
-      window.prompt("Скопируйте ссылку", url);
+    if (webUrl) {
+      window.prompt("Скопируйте ссылку", webUrl);
       return;
     }
     window.alert(error.message || "Не удалось подготовить ссылку.");
