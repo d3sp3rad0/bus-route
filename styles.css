@@ -374,6 +374,13 @@ input:focus {
   font-weight: 800;
 }
 
+.map-credit {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
 @media (max-width: 560px) {
   .shell {
     display: block;
