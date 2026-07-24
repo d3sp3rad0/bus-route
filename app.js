@@ -17,7 +17,7 @@ const routeNote = document.querySelector("#route-note");
 
 const SAMPLE_ROUTE = "Курск. Россошь. Волгоград. Мамаев курган. Обратно в Курск.";
 const HISTORY_KEY = "bus-route-history-v1";
-const GEOCODE_CACHE_KEY = "bus-route-geocode-cache-v2";
+const LEGACY_GEOCODE_CACHE_KEYS = ["bus-route-geocode-cache-v1", "bus-route-geocode-cache-v2"];
 const GEOCODER_URL = "https://nominatim.openstreetmap.org/search";
 const GEOCODE_DELAY_MS = 1100;
 const CITY_RESULT_TYPES = new Set(["city", "town", "village", "hamlet", "municipality"]);
@@ -65,6 +65,7 @@ let isRecording = false;
 let routeWasAdjusted = false;
 let isPreparingRoute = false;
 let lastGeocodeAt = 0;
+const geocodeSessionCache = new Map();
 
 function normalizePoint(value) {
   return value
@@ -212,18 +213,6 @@ function addSafetyWaypoints(routePoints) {
   return { points: adjusted, adjusted: changed };
 }
 
-function loadGeocodeCache() {
-  try {
-    return JSON.parse(localStorage.getItem(GEOCODE_CACHE_KEY) || "{}");
-  } catch {
-    return {};
-  }
-}
-
-function saveGeocodeCache(cache) {
-  localStorage.setItem(GEOCODE_CACHE_KEY, JSON.stringify(cache));
-}
-
 function wait(ms) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
@@ -240,9 +229,8 @@ async function respectGeocoderLimit() {
 
 async function geocodePoint(point) {
   const key = lookupKey(point);
-  const cache = loadGeocodeCache();
-  if (cache[key]) {
-    return cache[key];
+  if (geocodeSessionCache.has(key)) {
+    return geocodeSessionCache.get(key);
   }
 
   await respectGeocoderLimit();
@@ -270,8 +258,7 @@ async function geocodePoint(point) {
     lat: Number(first.lat),
     lon: Number(first.lon),
   };
-  cache[key] = coordinates;
-  saveGeocodeCache(cache);
+  geocodeSessionCache.set(key, coordinates);
   return coordinates;
 }
 
@@ -331,7 +318,7 @@ async function prepareRouteUrl(routePoints) {
   setRoutePreparing(true);
   try {
     const url = await buildYandexUrl(routePoints);
-    saveHistory(routePoints, url);
+    saveHistory(routePoints);
     return url;
   } finally {
     setRoutePreparing(false);
@@ -353,15 +340,16 @@ function updateInputFromPoints() {
   input.value = points.join(". ");
 }
 
-function saveHistory(routePoints, url) {
+function saveHistory(routePoints) {
   if (routePoints.length < 2) {
     return;
   }
 
-  const history = loadHistory().filter((item) => item.url !== url);
+  const routeKey = routePoints.map(lookupKey).join("|");
+  const history = loadHistory().filter((item) => item.routeKey !== routeKey);
   history.unshift({
     points: routePoints,
-    url,
+    routeKey,
     createdAt: new Date().toLocaleString("ru-RU", {
       day: "2-digit",
       month: "2-digit",
@@ -371,6 +359,12 @@ function saveHistory(routePoints, url) {
   });
   localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 5)));
   renderHistory();
+}
+
+function clearLegacyGeocodeCache() {
+  LEGACY_GEOCODE_CACHE_KEYS.forEach((key) => {
+    localStorage.removeItem(key);
+  });
 }
 
 function loadHistory() {
@@ -637,5 +631,6 @@ clearHistory.addEventListener("click", () => {
 });
 
 setupSpeech();
+clearLegacyGeocodeCache();
 render();
 renderHistory();
