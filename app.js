@@ -17,9 +17,26 @@ const routeNote = document.querySelector("#route-note");
 
 const SAMPLE_ROUTE = "Курск. Россошь. Волгоград. Мамаев курган. Обратно в Курск.";
 const HISTORY_KEY = "bus-route-history-v1";
-const GEOCODE_CACHE_KEY = "bus-route-geocode-cache-v1";
+const GEOCODE_CACHE_KEY = "bus-route-geocode-cache-v2";
 const GEOCODER_URL = "https://nominatim.openstreetmap.org/search";
 const GEOCODE_DELAY_MS = 1100;
+const CITY_RESULT_TYPES = new Set(["city", "town", "village", "hamlet", "municipality"]);
+const MULTI_WORD_PLACE_STARTS = new Set([
+  "белая",
+  "великие",
+  "великий",
+  "верхний",
+  "красная",
+  "минеральные",
+  "набережные",
+  "нижний",
+  "новая",
+  "новый",
+  "сергиев",
+  "старая",
+  "старый",
+]);
+const MULTI_WORD_PLACE_CONNECTORS = new Set(["на", "над", "под"]);
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 const KURSK_NAMES = ["курск"];
 const BELARUS_NAMES = [
@@ -69,7 +86,7 @@ function splitByCapitalizedPlaces(text) {
       return;
     }
 
-    const startsNewPoint = /^[А-ЯЁA-Z]/.test(cleanWord) && current;
+    const startsNewPoint = /^[А-ЯЁA-Z]/.test(cleanWord) && current && !shouldJoinPlaceWord(current);
     if (startsNewPoint) {
       result.push(current);
       current = cleanWord;
@@ -84,6 +101,12 @@ function splitByCapitalizedPlaces(text) {
   }
 
   return result;
+}
+
+function shouldJoinPlaceWord(current) {
+  const words = lookupKey(current).split(" ").filter(Boolean);
+  const lastWord = words[words.length - 1];
+  return MULTI_WORD_PLACE_STARTS.has(lastWord) || MULTI_WORD_PLACE_CONNECTORS.has(lastWord);
 }
 
 function splitSingleChunk(chunk) {
@@ -225,9 +248,10 @@ async function geocodePoint(point) {
   await respectGeocoderLimit();
 
   const params = new URLSearchParams({
+    addressdetails: "1",
     format: "jsonv2",
     q: point,
-    limit: "1",
+    limit: "5",
     "accept-language": "ru",
   });
 
@@ -237,7 +261,7 @@ async function geocodePoint(point) {
   }
 
   const results = await response.json();
-  const first = Array.isArray(results) ? results[0] : null;
+  const first = pickBestGeocodeResult(results);
   if (!first || !first.lat || !first.lon) {
     throw new Error(`Не удалось найти точку: ${point}`);
   }
@@ -249,6 +273,36 @@ async function geocodePoint(point) {
   cache[key] = coordinates;
   saveGeocodeCache(cache);
   return coordinates;
+}
+
+function pickBestGeocodeResult(results) {
+  if (!Array.isArray(results) || results.length === 0) {
+    return null;
+  }
+
+  const scored = results.map((result, index) => ({
+    result,
+    score: scoreGeocodeResult(result) - index,
+  }));
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0].result;
+}
+
+function scoreGeocodeResult(result) {
+  let score = 0;
+  if (result.category === "place") {
+    score += 40;
+  }
+  if (CITY_RESULT_TYPES.has(result.type)) {
+    score += 40;
+  }
+  if (CITY_RESULT_TYPES.has(result.addresstype)) {
+    score += 30;
+  }
+  if (result.category === "boundary") {
+    score -= 30;
+  }
+  return score;
 }
 
 async function buildYandexUrl(routePoints) {
