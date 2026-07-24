@@ -316,13 +316,23 @@ function removePoint(index) {
   render();
 }
 
-function parseCurrentText() {
-  const parsedPoints = parseRouteText(input.value);
+function applyRouteText(text, syncInput) {
+  const parsedPoints = parseRouteText(text);
   const result = addSafetyWaypoints(parsedPoints);
   points = result.points;
   routeWasAdjusted = result.adjusted;
-  updateInputFromPoints();
+  if (syncInput) {
+    updateInputFromPoints();
+  }
   render();
+}
+
+function parseCurrentText() {
+  applyRouteText(input.value, true);
+}
+
+function previewCurrentText() {
+  applyRouteText(input.value, false);
 }
 
 function copyCurrentLink() {
@@ -427,7 +437,7 @@ copyLink.addEventListener("click", copyCurrentLink);
 micButton.addEventListener("click", toggleSpeech);
 input.addEventListener("input", () => {
   window.clearTimeout(input.parseTimer);
-  input.parseTimer = window.setTimeout(parseCurrentText, 350);
+  input.parseTimer = window.setTimeout(previewCurrentText, 350);
 });
 addPointForm.addEventListener("submit", (event) => {
   event.preventDefault();
